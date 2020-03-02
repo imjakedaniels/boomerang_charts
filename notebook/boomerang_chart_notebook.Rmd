@@ -157,7 +157,7 @@ p <- plot_df %>%
   scale_x_discrete("", 
                    labels = function(x) str_wrap(x, 13)) +
   scale_y_continuous("", 
-                     labels = scales::percent,
+                     labels = c("", ""),
                      breaks = c(0, 0.4),
                      limits = c(0, max(plot_df$proportion) * 1.25),
                      expand = c(0,0)) + 
@@ -182,14 +182,14 @@ p <- plot_df %>%
                                       family = "Roboto Condensed",
                                       lineheight = 1, vjust = 0.5),
         plot.subtitle = element_markdown(colour = grey(0.7)),
-        plot.caption = element_text(hjust = 0),
+        plot.caption = element_text(hjust = 1),
         plot.background = element_rect(grey(0.05)))
 
 animated_plot <- p +
-  transition_states(living_location, transition_length = 0.3, state_length = 0.1) +
+  transition_states(living_location, transition_length = 0.3, state_length = 0.2) +
   ease_aes('quadratic-in-out')
 
 animate(animated_plot, width = 700, height = 300, fps = 30)
 
-anim_save(width = 700, height = 300, fps = 20, filename = "animations/residency_animation.gif")
+anim_save(width = 700, height = 300, fps = 30, filename = "animations/residency_animation.gif")
 ```
