@@ -1,0 +1,195 @@
+---
+title: "boomerang_charts"
+author: "Jake"
+date: "29/02/2020"
+output: html_document
+---
+
+# Packages
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(gganimate)
+library(ggthemes)
+library(emo)
+library(rvest)
+library(extrafont) # for nice fonts
+library(ggtext) # for adding colour in plot titles
+loadfonts(device = "pdf", quiet = TRUE)
+theme_set(theme_light(base_family = "Roboto Condensed"))
+```
+
+# 
+
+```{r}
+housing_data <- read_csv(here::here("data/housing-survey.csv"))
+
+unwanted_answers <- c("Don't know", "Prefer not to say", "Does not apply")
+```
+
+```{r, echo = FALSE, include = TRUE}
+# Slice segments
+split_segment <- function(df, target_qid, segment_qid, segment_responses, compliment = FALSE){
+  
+  affected_users <- df %>% 
+    filter(question == segment_qid & response %in% segment_responses) %>%
+    select(user_id) 
+  
+  # remove duplicates
+  q_df <- df %>% 
+    filter(question == target_qid) %>%
+    group_by(user_id, response) %>%
+    filter(row_number() == 1) %>%
+    ungroup() 
+  
+  # target multiple choice ids
+  multiple_choice_qids <- df %>%
+    filter(question_type == "multi_select") %>%
+    .$user_id
+  
+  if (compliment == FALSE) {
+    if (target_qid %in% multiple_choice_qids) {
+      q_df <- q_df %>%
+        mutate(total_resps = n_distinct(user_id))
+    } else {
+      q_df <- q_df %>%
+        filter(user_id %in% affected_users$user_id) %>%
+        mutate(total_resps = n())
+    }
+  } 
+  
+  if (compliment == TRUE) {
+    if (target_qid %in% multiple_choice_qids) {
+      q_df <- q_df %>%
+        mutate(total_resps = n_distinct(user_id))
+    } else {
+      q_df <- q_df %>%
+        filter(!user_id %in% affected_users) %>%
+        mutate(total_resps = n())
+    }
+  } 
+  
+  # calculate count, proportions and prepare data for plotting
+  df_summarized <- q_df %>% 
+    filter(!response %in% unwanted_answers) %>%
+    group_by(response, total_resps, q_order) %>%
+    summarise(count = n()) %>% 
+    mutate(proportion = count / total_resps,
+           label_text = scales::percent(proportion, accuracy = 1)) %>% 
+    arrange(q_order) %>% 
+    ungroup() %>%
+    mutate(response = factor(response))
+  
+  return(df_summarized)
+  
+}
+```
+
+
+```{r, echo = FALSE, include = TRUE}
+suburb_subset_last_moved <- split_segment(df = housing_data,
+                                          target_qid = "When was the last time you moved?",
+                                          segment_qid = "Where do you currently live?",
+                                          segment_responses = c("Suburbs")) 
+
+rural_subset_last_moved <- split_segment(df = housing_data,
+                                         target_qid = "When was the last time you moved?",
+                                         segment_qid = "Where do you currently live?",
+                                         segment_responses = c("Rural area")) 
+
+city_subset_last_moved <- split_segment(df = housing_data,
+                                        target_qid = "When was the last time you moved?",
+                                        segment_qid = "Where do you currently live?",
+                                        segment_responses = c("City"))
+```
+
+```{r}
+# functions to lookup emojis
+emoji_to_link <- function(x) {
+  paste0("https://emojipedia.org/emoji/",x) %>%
+    read_html() %>%
+    html_nodes("tr td a") %>%
+    .[1] %>%
+    html_attr("href") %>%
+    paste0("https://emojipedia.org/", .) %>%
+    read_html() %>%
+    html_node('div[class="vendor-image"] img') %>%
+    html_attr("src")
+}
+
+# download image
+link_to_img <- function(x, size = 30) {
+  paste0("<img src='", x, "' width='", size, "'/>")
+}
+```
+
+## City dwellers do not stay in the same place as long as others
+
+```{r, echo = FALSE, include = TRUE}
+plot_df <- bind_rows(city_subset_last_moved, 
+                     suburb_subset_last_moved, 
+                     rural_subset_last_moved,
+                     .id = "group") %>%
+  mutate(response = str_remove(response, ".[a-z]+$")) %>%
+  mutate(living_location = case_when(group == 1 ~ "City",
+                                     group == 2 ~ "Suburbs",
+                                     group == 3 ~ "Rural")) %>%
+  mutate(emoji = case_when(living_location == "City" ~ str_glue("{emo::ji('office building')}"),
+                           living_location == "Suburbs" ~ str_glue("{emo::ji('house')}"),
+                           living_location == "Rural" ~ str_glue("{emo::ji('tractor')}"))) %>%
+  mutate(emoji = emo::ji_extract_all(emoji)) %>%
+  mutate(url = map_chr(emoji, slowly(~emoji_to_link(.x), rate_delay(1))),
+         emoji_label = link_to_img(url)) %>%
+  mutate(living_location = as.factor(str_glue("{emoji_label} {living_location}")))
+```
+
+
+```{r, echo = FALSE, include = TRUE}
+p <- plot_df %>%
+  ggplot(aes(x = reorder(response, desc(q_order)),
+             y = proportion,
+             fill = proportion,
+             label = case_when(proportion > 0 ~ label_text))) +
+  geom_bar(stat = "identity", 
+           colour = "black") +
+  geom_text(hjust = -0.1, colour = "white") +
+  scale_x_discrete("", 
+                   labels = function(x) str_wrap(x, 13)) +
+  scale_y_continuous("", 
+                     labels = scales::percent,
+                     breaks = c(0, 0.4),
+                     limits = c(0, max(plot_df$proportion) * 1.25),
+                     expand = c(0,0)) + 
+  coord_flip(clip = "off") +
+  ggthemes::scale_fill_continuous_tableau(palette = "Red") +
+  ggthemes::theme_clean() +
+  labs(title = "City dwellers do not stay in the same place as long as others", 
+       caption  = "Boomerang Charts by @datajake",
+       subtitle  = paste('<b style="font-size:35pt;color:white">',
+                         '{closest_state}',
+                         '</b>',
+                         '<span style="font-size:14pt"><i>
+                          <br>
+                          "When was the last time you moved?"
+                          </i></span>')) +
+  theme(legend.position = "none",
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        text = element_text(colour = "white"),
+        axis.text = element_text(colour = "white"),
+        plot.title = element_markdown(size = 20, face = "bold", 
+                                      family = "Roboto Condensed",
+                                      lineheight = 1, vjust = 0.5),
+        plot.subtitle = element_markdown(colour = grey(0.7)),
+        plot.caption = element_text(hjust = 0),
+        plot.background = element_rect(grey(0.05)))
+
+animated_plot <- p +
+  transition_states(living_location, transition_length = 0.3, state_length = 0.1) +
+  ease_aes('quadratic-in-out')
+
+animate(animated_plot, width = 700, height = 300, fps = 30)
+
+anim_save(width = 700, height = 300, fps = 20, filename = "animations/residency_animation.gif")
+```
