@@ -16,7 +16,6 @@ library(emo)
 library(rvest)
 library(extrafont) # for nice fonts
 library(ggtext) # for adding colour in plot titles
-loadfonts(device = "pdf", quiet = TRUE)
 theme_set(theme_light(base_family = "Roboto Condensed"))
 ```
 
@@ -162,8 +161,8 @@ p <- plot_df %>%
                      limits = c(0, max(plot_df$proportion) * 1.25),
                      expand = c(0,0)) + 
   coord_flip(clip = "off") +
-  ggthemes::scale_fill_continuous_tableau(palette = "Red") +
-  ggthemes::theme_clean() +
+  scale_fill_continuous_tableau(palette = "Red") +
+  theme_clean() +
   labs(title = "City dwellers do not stay in the same place as long as others", 
        caption  = "Boomerang Charts by @datajake",
        subtitle  = paste('<b style="font-size:35pt;color:white">',
@@ -189,7 +188,10 @@ animated_plot <- p +
   transition_states(living_location, transition_length = 0.3, state_length = 0.2) +
   ease_aes('quadratic-in-out')
 
-animate(animated_plot, width = 700, height = 300, fps = 30)
 
-anim_save(width = 700, height = 300, fps = 30, filename = "animations/residency_animation.gif")
+options(gganimate.dev_args = list(height = 4, width = 4*2.333333, units = 'in', type = "cairo", res = 144))
+  
+
+animate(animated_plot, fps = 30, 
+        renderer = gifski_renderer(str_glue("{here::here()}/animations/residency_animation.gif")))
 ```
